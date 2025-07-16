@@ -9,7 +9,7 @@ import base64
 from datetime import datetime
 
 # Set your Groq API key
-GROQ_API_KEY = "your-groq-api-key-here"  # 🔁 Replace with your actual Groq key
+GROQ_API_KEY = "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"  # 🔁 Replace with your actual Groq key
 GROQ_HEADERS = {
     "Authorization": f"Bearer {GROQ_API_KEY}",
     "Content-Type": "application/json"
