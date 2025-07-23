@@ -1,76 +1,93 @@
+# Lura Messenger - Streamlit App (Phase 1)
+# Features: Signup/Login, Chat, Admin Dashboard
+
 import streamlit as st
-import requests
-import tempfile
-import os
 from datetime import datetime
-from io import BytesIO
-import base64
+import json
+import os
 
-# Set your Groq API key
-GROQ_API_KEY = "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"  # 🔁 Replace with your actual Groq key
-GROQ_HEADERS = {
-    "Authorization": f"Bearer {GROQ_API_KEY}",
-    "Content-Type": "application/json"
-}
+# In-memory user store and message log
+if "users" not in st.session_state:
+    st.session_state.users = {}
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Helper function to display response
-def speak(text):
-    st.write("🗣️ Vaishnav ji:", text)
+# Admin credentials (hardcoded for now)
+ADMIN_EMAIL = "admin@lura.com"
+ADMIN_PASSWORD = "admin123"
 
-# Upload audio and transcribe using Whisper
-def whisper_transcribe(file):
-    files = {"file": ("audio.wav", file, "audio/wav")}
-    response = requests.post(
-        "https://api.groq.com/openai/v1/audio/transcriptions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-        files=files,
-        data={"model": "whisper-large-v3"}
-    )
-    return response.json().get("text", "")
+def save_to_file():
+    with open("users.json", "w") as f:
+        json.dump(st.session_state.users, f)
+    with open("messages.json", "w") as f:
+        json.dump(st.session_state.messages, f)
 
-# Groq LLM call
-def groq_chat(message):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    payload = {
-        "model": "llama3-8b-8192",
-        "messages": [
-            {"role": "system", "content": "You are Vaishnav ji, a helpful Hindi voice assistant."},
-            {"role": "user", "content": message}
-        ]
-    }
-    response = requests.post(url, headers=GROQ_HEADERS, json=payload)
-    return response.json()['choices'][0]['message']['content']
+def load_from_file():
+    if os.path.exists("users.json"):
+        with open("users.json", "r") as f:
+            st.session_state.users = json.load(f)
+    if os.path.exists("messages.json"):
+        with open("messages.json", "r") as f:
+            st.session_state.messages = json.load(f)
 
-# UI
-st.title("🎤 Voice Assistant - Vaishnav ji (Groq Version)")
-st.write("Record or upload your voice. Vaishnav ji will reply!")
+# Load stored data
+load_from_file()
 
-# Voice uploader
-audio_file = st.file_uploader("Upload a .wav audio file", type=["wav"])
+# UI: Sidebar - Login/Signup
+st.sidebar.title("Lura Messenger")
+auth_mode = st.sidebar.radio("Choose Option", ["Login", "Signup"])
+email = st.sidebar.text_input("Email")
+password = st.sidebar.text_input("Password", type="password")
 
-if audio_file is not None:
-    st.audio(audio_file, format="audio/wav")
-    with st.spinner("Transcribing with Whisper..."):
-        user_text = whisper_transcribe(audio_file)
-        st.write("🧑 You:", user_text)
-
-        # Static responses
-        if "your name" in user_text:
-            speak("My name is Vaishnav ji, your personal assistant!")
-
-        elif "time" in user_text:
-            time_now = datetime.now().strftime("%I:%M %p")
-            speak(f"Current time is {time_now}")
-
-        elif "how are you" in user_text:
-            speak("I'm doing great! How can I help you?")
-
-        elif "joke" in user_text:
-            speak("Why did the computer go to the doctor? Because it had a virus!")
-
+if auth_mode == "Signup":
+    name = st.sidebar.text_input("Name")
+    if st.sidebar.button("Create Account"):
+        if email in st.session_state.users:
+            st.sidebar.warning("User already exists.")
         else:
-            reply = groq_chat(user_text)
-            speak(reply)
+            st.session_state.users[email] = {"name": name, "password": password}
+            save_to_file()
+            st.sidebar.success("Account created! Please login.")
 
-else:
-    st.info("Please upload a WAV audio file to begin.")
+elif auth_mode == "Login":
+    if st.sidebar.button("Login"):
+        if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+            st.session_state["user"] = "admin"
+        elif email in st.session_state.users and st.session_state.users[email]["password"] == password:
+            st.session_state["user"] = email
+        else:
+            st.sidebar.error("Invalid login credentials.")
+
+# After login:
+if "user" in st.session_state:
+    if st.session_state.user == "admin":
+        st.title("🔒 Admin Dashboard - Lura")
+        st.subheader("All Registered Users")
+        st.json(st.session_state.users)
+        st.subheader("Chat Logs")
+        st.json(st.session_state.messages)
+    else:
+        st.title("💬 Lura Messenger")
+        user_email = st.session_state.user
+        user_name = st.session_state.users[user_email]["name"]
+        st.success(f"Logged in as: {user_name}")
+
+        # Chat area
+        receiver = st.selectbox("Send message to:", [u for u in st.session_state.users if u != user_email])
+        msg = st.text_input("Type your message")
+        if st.button("Send"):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state.messages.append({
+                "from": user_email,
+                "to": receiver,
+                "message": msg,
+                "time": timestamp
+            })
+            save_to_file()
+
+        # Show conversation
+        st.subheader("📨 Your Chats")
+        for chat in st.session_state.messages:
+            if (chat["from"] == user_email and chat["to"] == receiver) or \
+               (chat["from"] == receiver and chat["to"] == user_email):
+                st.text(f"[{chat['time']}] {chat['from']} ➤ {chat['message']}")
